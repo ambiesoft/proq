@@ -12,6 +12,13 @@
 using namespace Ambiesoft::stdosd;
 using namespace std;
 
+#define APP_NAME "proq"
+#define APP_VERSION "1.0.0"
+
+struct Options {
+    bool bVerbose = false;
+} gOptions;
+
 int main2(int argc, SYSTEM_CHAR_TYPE* argv[]);
 
 int main(int argc, char* argv[])
@@ -58,6 +65,10 @@ struct ProcessState
 
 int main3(vector<ProcessState*>& pros);
 
+void showHelp()
+{
+    cout << APP_NAME << " v" << APP_VERSION << endl;
+}
 int main2(int argc, SYSTEM_CHAR_TYPE* argv[])
 {
     if(argc < 2)
@@ -66,11 +77,32 @@ int main2(int argc, SYSTEM_CHAR_TYPE* argv[])
         return 1;
     }
 
-    vector<ProcessState*> pros;
-    for(auto&& v : stdGetAllProcesses(argv[1])) {
-        pros.push_back(new ProcessState(v));
+    vector<SYSTEM_STRING_TYPE> exes;
+
+    for(int i=1 ; i < argc; ++i) {
+        SYSTEM_STRING_TYPE arg = argv[i];
+        if(stdStartWith(arg, STDOSD_SYSTEM_CHAR_LITERAL("-"))) {
+            if(
+                arg==STDOSD_SYSTEM_CHAR_LITERAL("--help") ||
+                arg==STDOSD_SYSTEM_CHAR_LITERAL("-h") ||
+                arg==STDOSD_SYSTEM_CHAR_LITERAL("-v") ||
+                arg==STDOSD_SYSTEM_CHAR_LITERAL("--version")) {
+                showHelp();
+                return 0;
+            } else if(arg==STDOSD_SYSTEM_CHAR_LITERAL("--verbose")) {
+                gOptions.bVerbose = true;
+            }
+        } else {
+            exes.push_back(arg);
+        }
     }
 
+    vector<ProcessState*> pros;
+    for(auto&& exe : exes) {
+        for(auto&& v : stdGetAllProcesses(exe)) {
+            pros.push_back(new ProcessState(v));
+        }
+    }
     bool ret = main3(pros);
     for(auto&& pro : pros)
         delete pro;
@@ -91,6 +123,9 @@ int main3(vector<ProcessState*>& pros)
             cerr << "Failed to suspend:" << pros[i]->pid() << endl;
             return 1;
         }
+        if(gOptions.bVerbose) {
+            cout << "suspended:" << pros[i]->pid() << endl;
+        }
     }
 
     // All Process suspended now
@@ -98,9 +133,21 @@ int main3(vector<ProcessState*>& pros)
         if(!pros[i]->resume()) {
             cerr << "Failed to resume:" << pros[i]->pid() << endl;
         }
+        if(gOptions.bVerbose) {
+            cout << "resumed:" << pros[i]->pid() << endl;
+        }
+
+        if(gOptions.bVerbose) {
+            cout << "waiting:" << pros[i]->pid() << endl;
+        }
         if(!stdWaitProcess(pros[i]->pid())) {
             cerr << "Faiiled to wait:" << pros[i]->pid() << endl;
+            return 1;
         }
+        if(gOptions.bVerbose) {
+            cout << "finished:" << pros[i]->pid() << endl;
+        }
+
     }
     return 0;
 }
