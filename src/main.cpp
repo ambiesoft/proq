@@ -2,12 +2,15 @@
 #include <iostream>
 #include <functional>
 #include <cassert>
+#include <sstream>
 
 #ifdef _WIN32
 #include <ShlObj.h>
 #endif
 
 #include "../../lsMisc/stdosd/stdosd.h"
+
+#include "processstate.h"
 
 using namespace Ambiesoft::stdosd;
 using namespace std;
@@ -20,7 +23,30 @@ struct Options {
 } gOptions;
 
 int main2(int argc, SYSTEM_CHAR_TYPE* argv[]);
+int main3(vector<ProcessState*>& pros);
 
+string getCurrentDateTime()
+{
+    std::time_t t = std::time(nullptr);
+    std::tm* now = std::localtime(&t);
+
+    stringstream ss;
+    ss << std::put_time(now, "%x") << " " << std::put_time(now, "%X");
+    return ss.str();
+
+    char buffer[80];
+    std::strftime(buffer, 80, "%Y/%m/%d %H:%M:%S", now);
+
+    return buffer;
+}
+
+void WriteLog(const char* pMessage, STDOSD_PID pid)
+{
+    if(!gOptions.bVerbose)
+        return;
+
+    cout << getCurrentDateTime() << "\t" << pMessage << ":" << pid << endl;
+}
 int main(int argc, char* argv[])
 {
 #ifdef _WIN32
@@ -36,34 +62,6 @@ int main(int argc, char* argv[])
 #endif
 }
 
-struct ProcessState
-{
-    bool suspended_ = false;
-    STDOSD_PID pid_;
-    ProcessState(STDOSD_PID pid):pid_(pid){}
-    ~ProcessState()
-    {
-        if(suspended_)
-            stdResumeProcess(pid_);
-    }
-
-    bool suspend() {
-        assert(!suspended_);
-        suspended_ = stdSuspendProcess(pid_);
-        return suspended_;
-    }
-    bool resume() {
-        assert(suspended_);
-        suspended_ = !stdResumeProcess(pid_);
-        return !suspended_;
-    }
-    STDOSD_PID pid() const {
-        return pid_;
-    }
-};
-
-
-int main3(vector<ProcessState*>& pros);
 
 void showHelp()
 {
@@ -91,6 +89,9 @@ int main2(int argc, SYSTEM_CHAR_TYPE* argv[])
                 return 0;
             } else if(arg==STDOSD_SYSTEM_CHAR_LITERAL("--verbose")) {
                 gOptions.bVerbose = true;
+            } else {
+                stdcerr << STDOSD_SYSTEM_CHAR_LITERAL("Unknown option:") << arg << endl;
+                return 1;
             }
         } else {
             exes.push_back(arg);
@@ -123,9 +124,7 @@ int main3(vector<ProcessState*>& pros)
             cerr << "Failed to suspend:" << pros[i]->pid() << endl;
             return 1;
         }
-        if(gOptions.bVerbose) {
-            cout << "suspended:" << pros[i]->pid() << endl;
-        }
+        WriteLog("suspended", pros[i]->pid());
     }
 
     // All Process suspended now
@@ -133,21 +132,14 @@ int main3(vector<ProcessState*>& pros)
         if(!pros[i]->resume()) {
             cerr << "Failed to resume:" << pros[i]->pid() << endl;
         }
-        if(gOptions.bVerbose) {
-            cout << "resumed:" << pros[i]->pid() << endl;
-        }
+        WriteLog("resumed", pros[i]->pid());
 
-        if(gOptions.bVerbose) {
-            cout << "waiting:" << pros[i]->pid() << endl;
-        }
+        WriteLog("waiting", pros[i]->pid());
         if(!stdWaitProcess(pros[i]->pid())) {
             cerr << "Faiiled to wait:" << pros[i]->pid() << endl;
             return 1;
         }
-        if(gOptions.bVerbose) {
-            cout << "finished:" << pros[i]->pid() << endl;
-        }
-
+        WriteLog("finished", pros[i]->pid());
     }
     return 0;
 }
